@@ -12,8 +12,6 @@ library(mosaic)
 
 greenbuildingsdata = read.csv('data/greenbuildings.csv')
 
-data(greenbuildingsdata)
-greenbuildingsdata
 head(greenbuildingsdata)
 summary(greenbuildingsdata)
 ```
@@ -955,7 +953,7 @@ PC4: Reverse Age (Young vs. Old)
 
 We will now run another clustering algorithm, using the above principal components. First we need to find how many clusters there seem to be.
 
-```{r find k with PCA}
+```{r find k with PCA, results = "hide"}
 pc3 = prcomp(X2, scale=TRUE, center = TRUE, rank=4)
 scores3 = pc3$x
 
@@ -977,10 +975,14 @@ for(k in k_grid) {
   CH = (B/W) * ((N - k) / (k - 1))
   CH_grid = c(CH_grid, CH)
 }
+```
+
+```{r}
 
 plot(k_grid,ss)
 plot(k_grid,CH_grid)
 ```
+
 
 Using our principal components, both approaches of finding k seem to give the same result. The elbow seems to be at k = 5, and CH is also telling us 5. Thus, we will run k-means with k = 5.
 
@@ -1278,7 +1280,7 @@ Additionally, we will use a minimum confidence of 0.1. This means that for every
 grocrules = apriori(groctrans, 
 	parameter=list(support=.001, confidence=.1))
 
-inspect(grocrules)
+#inspect(grocrules)
 ```
 
 Using the above mentioned thresholds, this leaves us with 548 rules.
