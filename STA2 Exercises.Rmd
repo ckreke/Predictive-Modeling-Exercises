@@ -1,8 +1,8 @@
 ---
 title: "STA2 Exercises"
 output:
-  pdf_document: default
-  html_document: default
+  md_document:
+    variant: markdown_github
 ---
 
 # Green buildings
@@ -296,6 +296,7 @@ In conclusion, investing in a green certification building is not a reasonable d
 
 ```{r}
 library(ggplot2)
+library(reshape2)
 abia = read.csv("data/ABIA.csv")
 
 #Creating variables
@@ -871,7 +872,7 @@ plot(k_grid,CH_grid)
 
 The elbow plot does not give us a clear k to use; however, the CH index suggests a k of 10, so we will use that in our algorithm.
 
-```{r k-means k=10}
+```{r k-means}
 set.seed(10)
 kclust = kmeans(X1, 10, nstart=50)
 
