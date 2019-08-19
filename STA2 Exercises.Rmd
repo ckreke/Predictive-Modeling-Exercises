@@ -1,0 +1,1019 @@
+---
+title: "STA2 Exercises"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Flights at ABIA
+
+```{r}
+library(ggplot2)
+abia = read.csv("data/ABIA.csv")
+
+#Creating variables
+abia$dummy = 1
+
+abia$carrier.dummy = ifelse(abia$CarrierDelay > 0, 1, 0)
+abia$weather.dummy = ifelse(abia$WeatherDelay > 0, 1, 0)
+abia$nas.dummy = ifelse(abia$NASDelay > 0, 1, 0)
+abia$security.dummy = ifelse(abia$SecurityDelay > 0, 1, 0)
+abia$lateaircraft.dummy = ifelse(abia$LateAircraftDelay > 0, 1, 0)
+
+#Subsetting flights flying out of Austin
+outbound_Aus = subset(abia, abia$Origin == "AUS")
+
+#Subsetting flights flying out of Austin and have experienced delays
+outbound_Aus_delays = subset(abia, abia$Origin == "AUS" & abia$DepDelay > 0)
+```
+
+####################################################################
+## By Airline - Flying OUT OF Austin
+####################################################################
+```{r}
+#Airlines delays
+airline.delay = aggregate(outbound_Aus_delays$dummy,by=list(outbound_Aus_delays$UniqueCarrier),FUN = sum, na.rm=TRUE)
+names(airline.delay)[1] = "UniqueCarrier"
+names(airline.delay)[2] = "AnnualDelays"
+
+#Airlines total outbound flights
+airline.total = aggregate(outbound_Aus$dummy,by=list(outbound_Aus$UniqueCarrier),FUN = sum, na.rm=TRUE)
+names(airline.total)[1] = "UniqueCarrier"
+names(airline.total)[2] = "AnnualFlights"
+
+# Calculating percentages
+airline.delay.perc = merge(airline.total,airline.delay, by = "UniqueCarrier")
+airline.delay.perc$per.delays = round(airline.delay.perc$AnnualDelays/airline.delay.perc$AnnualFlights,3)*100
+```
+
+This figure illustrates the total flights out of Austin by Airline.
+```{r}
+ggplot(data=airline.total, aes(reorder(x= UniqueCarrier, AnnualFlights), y= AnnualFlights)) + 
+  geom_bar( stat = 'identity') + 
+  ggtitle("Total # of Flights out of AUS by Airline") + 
+  theme(plot.title = element_text(lineheight=1.2, face="bold")) + 
+  xlab("Airlines") + 
+  ylab("Number of flights") + 
+  coord_flip()
+
+```
+
+This figure illustrates the total flights that are delayed leaving Austin Airport.
+```{r}
+ggplot(data=airline.delay, aes(reorder(x= UniqueCarrier, AnnualDelays), y= AnnualDelays)) + 
+  geom_bar( stat = 'identity') + 
+  # scale_size_area() + 
+  ggtitle("Total # of Flights out of AUS Delayed by Airline") + 
+  # theme(plot.title = element_text(lineheight=1.2, face="bold")) + 
+  xlab("Airlines") + 
+  ylab("Number of flights delayed") + 
+  coord_flip()
+
+```
+
+So, Southwest Airlines has the highest number of flights and the highest number of flights delayed. Normalizing the variables, does it still have the highest delayed flight to total flight ratio? Why yes it does! Don't fly Southwest. 
+
+To interpret the figure below, keep in mind that the average delay rate per airline is 30.23%. 
+```{r}
+library(tidyverse)
+
+data(airline.delay.perc)
+
+per.delays.scale = scale(airline.delay.perc$per.delays, center=TRUE, scale=FALSE)
+
+per.delays.type = ifelse(per.delays.scale < 0, "below", "above")  # above / below avg flag
+
+ggplot(data=airline.delay.perc, aes(reorder(x= UniqueCarrier, per.delays.scale), y = per.delays.scale)) + 
+  geom_bar(stat = 'identity', aes(fill=per.delays.type, width=.5)) + 
+  scale_fill_manual(name="Delays", 
+                    labels = c("Above Average (Bad)", "Below Average(Good)"), 
+                    values = c("above"="#f8766d", "below"="#00ba38")) +
+  ggtitle("% of Flights delayed by Airline") + 
+  xlab("Airlines") + 
+  ylab("deviation from the mean of % flights delayed") + 
+  coord_flip()
+
+```
+
+Aggregating Weather Delays by Airline
+```{r}
+airline.delay.types = aggregate(list(outbound_Aus_delays$carrier.dummy, outbound_Aus_delays$weather.dummy, outbound_Aus_delays$nas.dummy, outbound_Aus_delays$security.dummy, outbound_Aus_delays$lateaircraft.dummy),by=list(outbound_Aus_delays$UniqueCarrier),FUN = sum, na.rm=TRUE)
+names(airline.delay.types)[1] = "UniqueCarrier"
+names(airline.delay.types)[2] = "CarrierDelays"
+names(airline.delay.types)[3] = "WeatherDelays"
+names(airline.delay.types)[4] = "NASDelays"
+names(airline.delay.types)[5] = "SecurityDelays"
+names(airline.delay.types)[6] = "LateAircraftDelays"
+
+airline.delay.types.perc = merge(airline.delay,airline.delay.types, by = "UniqueCarrier")
+
+airline.delay.types.perc$per.delays.total = 100.0
+
+airline.delay.types.perc$totalDelays = airline.delay.types.perc$CarrierDelays + airline.delay.types.perc$WeatherDelays + airline.delay.types.perc$NASDelays + airline.delay.types.perc$SecurityDelays + airline.delay.types.perc$LateAircraftDelays
+
+airline.delay.types.perc$per.delays.carrier = round(airline.delay.types.perc$CarrierDelays/airline.delay.types.perc$totalDelays,3)*100
+
+airline.delay.types.perc$per.delays.weather = round(airline.delay.types.perc$WeatherDelays/airline.delay.types.perc$totalDelays,3)*100
+
+airline.delay.types.perc$per.delays.nas = round(airline.delay.types.perc$NASDelays/airline.delay.types.perc$totalDelays,3)*100
+
+airline.delay.types.perc$per.delays.security = round(airline.delay.types.perc$SecurityDelays/airline.delay.types.perc$totalDelays,3)*100
+
+airline.delay.types.perc$per.delays.late = round(airline.delay.types.perc$LateAircraftDelays/airline.delay.types.perc$totalDelays,3)*100
+```
+
+
+Now that we know which Airlines have the most delays on average, we can see why their flights are delayed. We accomplish this by identifying the percentage of reasons that flights were delayed by Airline.
+
+```{r}
+airline.delay.types.perc.selct <- airline.delay.types.perc[airline.delay.types.perc$UniqueCarrier %in% c("WN", "EV", "DL", "XE", "OH", "B6", "NW"), ]
+
+airline.delay.types.perc.selct <- airline.delay.types.perc.selct[c(1, 10:14)]
+
+airline.delay.types.perc.selct2 <- melt(airline.delay.types.perc.selct, id.vars='UniqueCarrier')
+
+ggplot(airline.delay.types.perc.selct2, aes(x=UniqueCarrier, y=value, fill=variable)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Most Delayed Airlines", 
+       subtitle="% of Delay Reasons", 
+       x="Airline",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+  
+```
+
+And we can compare these percentages to the least delayed airlines.
+```{r}
+airline.delay.types.perc.selct <- airline.delay.types.perc[airline.delay.types.perc$UniqueCarrier %in% c("CO", "MQ", "OO", "AA", "UA", "F9", "YV", "9E", "US"), ]
+
+airline.delay.types.perc.selct <- airline.delay.types.perc.selct[c(1, 10:14)]
+
+airline.delay.types.perc.selct2 <- melt(airline.delay.types.perc.selct, id.vars='UniqueCarrier')
+
+ggplot(airline.delay.types.perc.selct2, aes(x=UniqueCarrier, y=value, fill=variable)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Least Delayed Airlines", 
+       subtitle="% of Delay Reasons", 
+       x="Airline",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+While the reasons differ per airline, we can check whether the top 3 airlines on average are delayed for different reasons than the bottom 3 airlines.
+
+```{r}
+theme_set(theme_classic())
+
+airline.delay.types.perc.select.test <- airline.delay.types.perc[airline.delay.types.perc$UniqueCarrier %in% c("WN", "EV", "DL"), ]
+
+airline.delay.types.perc.select.test <- airline.delay.types.perc.select.test[c(1, 10:14)]
+airline.delay.types.perc.select.test = airline.delay.types.perc.select.test[,c(2:6)]
+bottom3_airlines = colMeans(airline.delay.types.perc.select.test)
+bottom3_airlines = data.frame(bottom3_airlines)
+
+
+airline.delay.types.perc.select.test2 <- airline.delay.types.perc[airline.delay.types.perc$UniqueCarrier %in% c( "YV", "9E", "US"), ]
+
+airline.delay.types.perc.select.test2 <- airline.delay.types.perc.select.test2[c(1, 10:14)]
+airline.delay.types.perc.select.test2 = airline.delay.types.perc.select.test2[,c(2:6)]
+top3_airlines = colMeans(airline.delay.types.perc.select.test2)
+top3_airlines = data.frame(top3_airlines)
+
+airline_ratings = data.frame()
+
+airline_grp_perf = cbind(top3_airlines, bottom3_airlines)
+airline_grp_perf = t(airline_grp_perf)
+
+airline_ratings <- melt(airline_grp_perf)
+
+ggplot(airline_ratings, aes(x=Var1, y=value, fill=Var2)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Top and bottom 3 Airlines", 
+       subtitle="% of Delay Reasons", 
+       x="Airlines (top = the least delayed airlines)",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+We can see that the most delayed airlines tend to be more commonly delayed due to reasons they cannot control (Weather and NAS) than the lest delayed airlines.
+
+
+####################################################################
+## Destinations - Flying OUT OF Austin
+####################################################################
+
+```{r}
+#Destinations delay count
+dest.delay = aggregate(outbound_Aus_delays$dummy,by=list(outbound_Aus_delays$Dest),FUN = sum, na.rm=TRUE)
+names(dest.delay)[1] = "Destination"
+names(dest.delay)[2] = "AnnualDelays"
+
+#Destinations total outbound count
+dest.total = aggregate(outbound_Aus$dummy,by=list(outbound_Aus$Dest),FUN = sum, na.rm=TRUE)
+names(dest.total)[1] = "Destination"
+names(dest.total)[2] = "AnnualFlights"
+
+dest.delay.perc = merge(dest.total,dest.delay, by = "Destination")
+dest.delay.perc$per.delays =round(dest.delay.perc$AnnualDelays/dest.delay.perc$AnnualFlights,3)*100
+```
+
+This figure plots the % of flights delayed by location. Almost 100% of flights to Des Moines, Iowa are delayed.
+```{r}
+ggplot(data=dest.delay.perc, aes(reorder(x= Destination, per.delays), y= per.delays)) + 
+  geom_bar(stat = 'identity') + 
+  ggtitle("% of Flights delayed by Destination") + 
+  xlab("Destinations") + 
+  ylab("% of flights delayed") + 
+  coord_flip()
+```
+
+There are a lot of different destinations in the above graph. So, to make the charts more interpretable, how about we just look solely at popular destinations?
+```{r}
+ggplot(data=subset(dest.delay.perc,dest.delay.perc$AnnualFlights> median(dest.delay.perc$AnnualFlights)), aes(reorder(x= Destination, per.delays), y= per.delays)) + 
+  geom_bar(stat = 'identity') + 
+  ggtitle("% of Flights delayed by Popular Destinations") + 
+  xlab("Destinations") + 
+  ylab("% of flights delayed") + 
+  coord_flip()
+```
+
+That was still hard to interpret. Let's look at the percentage differnce from the average, which is 36.66% of flights delayed (by destination). 
+```{r}
+data(dest.delay.perc)
+
+dest.delay.perc.subset = subset(dest.delay.perc,dest.delay.perc$AnnualFlights> median(dest.delay.perc$AnnualFlights))
+
+data(dest.delay.perc.subset)
+
+average_delays_by_dest = mean(dest.delay.perc.subset$per.delays)
+print(average_delays_by_dest)
+
+dest.delay.perc.subset$dest.delay.scale = scale(dest.delay.perc.subset$per.delays, center=TRUE, scale=FALSE)
+
+dest.delay.perc.subset$dest.delay.type = ifelse(dest.delay.perc.subset$dest.delay.scale < 0, "below", "above")  # above / below avg flag
+
+ggplot(data=dest.delay.perc.subset, aes(reorder(x= dest.delay.perc.subset$Destination, dest.delay.perc.subset$dest.delay.scale), y= dest.delay.perc.subset$dest.delay.scale)) + 
+  geom_bar(stat = 'identity', aes(fill=dest.delay.perc.subset$dest.delay.type, width=.5)) + 
+  scale_fill_manual(name="Delays", 
+                    labels = c("Above Average (Bad)", "Below Average (Good)"), 
+                    values = c("above"="#f8766d", "below"="#00ba38")) +
+  ggtitle("% of Flights delayed by Popular Destinations") + 
+  xlab("Destination") + 
+  ylab("deviation from the mean of % flights delayed") + 
+  coord_flip()
+```
+
+Aggregating Weather Delays by Destination OUT OF Austin
+```{r}
+dest.delay.types = aggregate(list(outbound_Aus_delays$carrier.dummy, outbound_Aus_delays$weather.dummy, outbound_Aus_delays$nas.dummy, outbound_Aus_delays$security.dummy, outbound_Aus_delays$lateaircraft.dummy),by=list(outbound_Aus_delays$Dest),FUN = sum, na.rm=TRUE)
+names(dest.delay.types)[1] = "Destination"
+names(dest.delay.types)[2] = "CarrierDelays"
+names(dest.delay.types)[3] = "WeatherDelays"
+names(dest.delay.types)[4] = "NASDelays"
+names(dest.delay.types)[5] = "SecurityDelays"
+names(dest.delay.types)[6] = "LateAircraftDelays"
+
+dest.delay.types.perc = merge(dest.delay,dest.delay.types, by = "Destination")
+
+dest.delay.types.perc$per.delays.total = 100.0
+
+dest.delay.types.perc$totalDelays = dest.delay.types.perc$CarrierDelays + dest.delay.types.perc$WeatherDelays + dest.delay.types.perc$NASDelays + dest.delay.types.perc$SecurityDelays + dest.delay.types.perc$LateAircraftDelays
+
+dest.delay.types.perc$per.delays.carrier = round(dest.delay.types.perc$CarrierDelays/dest.delay.types.perc$totalDelays,3)*100
+
+dest.delay.types.perc$per.delays.weather = round(dest.delay.types.perc$WeatherDelays/dest.delay.types.perc$totalDelays,3)*100
+
+dest.delay.types.perc$per.delays.nas = round(dest.delay.types.perc$NASDelays/dest.delay.types.perc$totalDelays,3)*100
+
+dest.delay.types.perc$per.delays.security = round(dest.delay.types.perc$SecurityDelays/dest.delay.types.perc$totalDelays,3)*100
+
+dest.delay.types.perc$per.delays.late = round(dest.delay.types.perc$LateAircraftDelays/dest.delay.types.perc$totalDelays,3)*100
+
+```
+
+In this figure below we plot the most popular destinations that experience the most delays in the most popular destinations.
+```{r}
+dest.delay.types.perc.select <- dest.delay.types.perc[dest.delay.types.perc$Destination %in% c("SAN", "BWI", "ELP", "MDW", "HOU", "LAS", "BNA", "LBB", "EWR", "DAL", "MCO", "DEN", "JFK"), ]
+
+dest.delay.types.perc.select <- dest.delay.types.perc.select[c(1, 10:14)]
+
+dest.delay.types.perc.select2 <- melt(dest.delay.types.perc.select, id.vars='Destination')
+
+ggplot(dest.delay.types.perc.select2, aes(x=Destination, y=value, fill=variable)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Top Delayed Destinations", 
+       subtitle="% of Delay Reasons", 
+       x="Destination",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+We can compare these reasons to the least delayed destinations in popular flights.
+```{r}
+dest.delay.types.perc.select <- dest.delay.types.perc[dest.delay.types.perc$Destination %in% c("PHX", "IAD", "ATL", "ORD", "CVG", "DFW", "IAH", "SFO", "SJC", "MEM", "CLT"), ]
+
+dest.delay.types.perc.select <- dest.delay.types.perc.select[c(1, 10:14)]
+
+dest.delay.types.perc.select2 <- melt(dest.delay.types.perc.select, id.vars='Destination')
+
+ggplot(dest.delay.types.perc.select2, aes(x=Destination, y=value, fill=variable)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Least Delayed Destinations", 
+       subtitle="% of Delay Reasons", 
+       x="Destination",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+The delay reasons for popular destinations differ a lot; however, we will try to detect systematically different reasons between the three most delayed destinations and the three least delayed destinations.
+
+```{r}
+theme_set(theme_classic())
+
+dest.delay.types.perc.select.test <- dest.delay.types.perc[dest.delay.types.perc$Destination %in% c("SAN", "BWI", "ELP"), ]
+
+dest.delay.types.perc.select.test <- dest.delay.types.perc.select.test[c(1, 10:14)]
+dest.delay.types.perc.select.test = dest.delay.types.perc.select.test[,c(2:6)]
+bottom3_destinations = colMeans(dest.delay.types.perc.select.test)
+bottom3_destinations = data.frame(bottom3_destinations)
+
+
+dest.delay.types.perc.select.test2 <- dest.delay.types.perc[dest.delay.types.perc$Destination %in% c("SJC", "MEM", "CLT"), ]
+
+dest.delay.types.perc.select.test2 <- dest.delay.types.perc.select.test2[c(1, 10:14)]
+dest.delay.types.perc.select.test2 = dest.delay.types.perc.select.test2[,c(2:6)]
+top3_destinations = colMeans(dest.delay.types.perc.select.test2)
+top3_destinations = data.frame(top3_destinations)
+
+destination_ratings = data.frame()
+
+dest_grp_perf = cbind(top3_destinations, bottom3_destinations)
+dest_grp_perf = t(dest_grp_perf)
+
+destination_ratings <- melt(dest_grp_perf)
+
+ggplot(destination_ratings, aes(x=Var1, y=value, fill=Var2)) +
+  geom_bar(stat='identity', position = position_dodge(width = 0.8), width=0.8) +
+  labs(title="Top and bottom 3 Destinations", 
+       subtitle="% of Delay Reasons", 
+       x="Destinations (top = flights to the least delayed destinations)",
+       y="% of Reason Delayed",
+       caption="source: ABIA") + 
+  scale_fill_discrete(name = "Delayed Reason", labels = c("Carrier", "Weather", "NAS", "Security", "Late Arrival")) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+Popular destinations with the worst delays tend to be delayed more due to late arrival of the preceeding flight than the popular destinations with the fewest delays.
+
+
+# Portfolio modeling
+
+We have chosen three separate portfolios. One consisting of 5 bond ETFs, to represent a very safe, low risk investment option. This means that the maximum loss as well as the VaR should be lower than our other two portfolios, but the average return should be fairly low, too.
+The second is a diversified portfolio of 10 ETFs, including equities, commodities, bonds, currencies, and real estate. We expect this portfolio to have a higher average return than the first, but also a higher maximum loss and higher VaR.
+Our third portfolio is a very risky portfolio. It includes 3 leveraged equity ETFs. This portfolio is expected to have the highest average return, but also the most risk, meaning that it will have a high maximum loss and a high VaR.
+
+```{r}
+library(ggplot2)
+library(mosaic)
+library(quantmod)
+library(foreach)
+
+myBondPortfolio = c("GOVT", "PZT", "VCSH", "VMBS", "LQD")
+myDiversePortfolio = c("TIP", "EUFX", "LD", "IDU", "XLK", "FRI", "MNA", "XHB", "PPLT", "CORN")
+myRiskyPortfolio = c("NUGT", "JNUG", "TECL")
+getSymbols(c(myBondPortfolio,myDiversePortfolio,myRiskyPortfolio), from = "2014-08-08", to = "2019-08-09")
+
+for(ticker in c(myBondPortfolio, myDiversePortfolio, myRiskyPortfolio)) {
+	expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+	eval(parse(text=expr))
+}
+
+all_returns = cbind(ClCl(GOVTa),
+                    ClCl(PZTa),
+                    ClCl(VCSHa),
+                    ClCl(VMBSa),
+                    ClCl(LQDa),
+                    ClCl(TIPa),
+                    ClCl(EUFXa),
+                    ClCl(LDa),
+                    ClCl(IDUa),
+                    ClCl(XLKa),
+                    ClCl(FRIa),
+                    ClCl(MNAa),
+                    ClCl(XHBa),
+                    ClCl(PPLTa),
+                    ClCl(CORNa),
+                    ClCl(NUGTa),
+                    ClCl(JNUGa),
+                    ClCl(TECLa))
+
+all_returns = as.matrix(na.omit(all_returns))
+
+initial_wealth = 100000
+n_days = 20
+
+set.seed(1) # make results reproducable
+
+sim1 = foreach(i=1:10000, .combine='rbind') %do% {
+	bond_wealth = initial_wealth
+	diverse_wealth = initial_wealth
+	risky_wealth = initial_wealth
+	
+	bond_weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+	diverse_weights = rep(0.1, 10)
+	risky_weights = rep(1/3, 3)
+	
+	bond_holdings = bond_weights * bond_wealth
+	diverse_holdings = diverse_weights * diverse_wealth
+	risky_holdings = risky_weights * risky_wealth
+	
+	bond_wealthtracker = rep(0, n_days)
+	diverse_wealthtracker = rep(0, n_days)
+	risky_wealthtracker = rep(0, n_days)
+	
+	for(today in 1:n_days) {
+		return.today = resample(all_returns, 1, orig.ids=FALSE)
+		bond_holdings = bond_holdings + bond_holdings*return.today[1:5]
+		diverse_holdings = diverse_holdings + diverse_holdings*return.today[6:15]
+		risky_holdings = risky_holdings + risky_holdings*return.today[16:18]
+		
+		bond_wealthtracker[today] = sum(bond_holdings)
+	  diverse_wealthtracker[today] = sum(diverse_holdings)
+	  risky_wealthtracker[today] = sum(risky_holdings)
+	}
+	c(bond_wealthtracker, diverse_wealthtracker, risky_wealthtracker)
+}
+
+bond_final = sim1[,n_days] - initial_wealth
+diverse_final = sim1[,(2*n_days)] - initial_wealth
+risky_final = sim1[,(3*n_days)] - initial_wealth
+
+names = c("Bond Portfolio", "Diverse Portfolio", "Risky Portfolio")
+means = c("Mean", mean(bond_final), mean(diverse_final), mean(risky_final))
+best = c("Best performance", max(bond_final), max(diverse_final), max(risky_final))
+worst = c("Worst performance", min(bond_final), min(diverse_final), min(risky_final))
+var5 = c("VaR at 5% level", quantile(bond_final, 0.05), quantile(diverse_final, 0.05), quantile(risky_final, 0.05))
+
+results = data.frame(" " = 0, "Bond Portfolio" = 0, "Diverse Portfolio" = 0, "Risky Portfolio" = 0)
+results[1,]=means
+results = rbind(results, best, worst, var5)
+
+for (i in 1:4)
+{
+  for (j in 2:4)
+    results[i, j] = round(as.numeric(results[i,j]),2)
+}
+
+results
+```
+
+As we can see from the table above, our expectations were correct. The bond portfolio has a low expected average return of \$279 after 4 weeks of trading, compared to \$859 for the diverse portfolio and \$10,139 for the risky portfolio.
+The best performances also vary widely. The bond portfolio's best performance was \$3,445, compared to \$59,010 for the diverse portfolio and a gain of almost \$5.2 million for the risky portfolio! However, this increased return comes at a price, namely risk.
+While the increased magnitude of worst performances give some indication, a better measure is value at risk. In 5% of the cases, we lose \$37,729 or more with our risky portfolio, compared to only \$4,763 for our diverse portfolio and $942 for our bond portfolio.
+
+```{r}
+portfolios = cbind(bond_final, diverse_final, risky_final)
+ggplot() + 
+  geom_histogram(aes(bond_final), fill = "green", binwidth = 1000, alpha = 0.5) +
+  geom_histogram(aes(diverse_final[diverse_final <= 70000]), fill = "blue", binwidth = 1000, alpha = 0.5) + 
+  geom_histogram(aes(risky_final[risky_final <= 70000]), fill = "red", binwidth = 1000, alpha = 0.5) +
+  geom_smooth()
+```
+This plot does not include the total distribution for the diverse portfolio, since it has some extreme outliers (such as the $5.2 million profit simulation).
+As seen in the plot above, the bond portfolios returns are all fairly close to 0 when compared to the other portfolios. As risk increases, the portfolios' final values start spreading a lot further from 0 (while the average slightly increases). For the risky portfolio, the tail to the right is extremely long.
+
+
+
+
+
+
+# Market segmentation
+
+Initially we will look at our data and try to discern if any initial data cleaning is necessary or if there are any gross outliers. We will do this by checking how many tweets are in each category, and looking at the dispersion of individuals' tweet counts. We will also check the correlation of variables.
+
+```{r Initial Data Analysis}
+library(ggplot2)
+library(corrplot)
+
+socialmarketing_raw = read.csv("data/social_marketing.csv")
+socialmarketing = socialmarketing_raw[,-(1)]
+attach(socialmarketing)
+
+tag_frequency = colSums(socialmarketing)
+
+tag_frequency = data.frame('names' = colnames(socialmarketing), 'frequency' = colSums((socialmarketing)))
+tag_frequency = tag_frequency[order(-tag_frequency$frequency),]
+tag_frequency$names = factor(tag_frequency$names, levels = tag_frequency$names)
+
+ggplot(tag_frequency, aes(x=names, y=frequency)) +
+  geom_bar(stat='identity',width=.5, fill="tomato3") + 
+  labs(title = "Count of tweets in each category") +
+  theme(axis.text.x = element_text(angle=90,vjust=0.5))
+
+boxplot(rowSums(socialmarketing), main = "Tweets per user")
+corrplot(cor(socialmarketing), order = "hclust")
+```
+
+The first plot illustrates that while there are extreme values, such as the chatter category, or users who tweeted over 100 times during this period, they are not necessarily outliers. 
+
+However, as the problem states, chatter and uncategorized might have been used interchangably between different annotators. Thus, we will combine them into one variable. Furthermore, from the above correlation matrix we can discern the following strong relationships:
+- cooking, fashion, beauty
+- outdoors, health_nutrition, personal_fitness
+- computers, travel, politics, news, automotive
+- photo_sharing, chatter, shopping
+- sports_playing, online_gaming, college_uni
+- tv_film, art
+- family, school, food, sports_fandom, religion, parenting
+
+Given how many dimensions we currently have, we will be grouping these variables together, in order to reduce dimensionality. Furthermore, these groupings make sense when you think about them.
+
+
+```{r Editing data frame}
+socialmarketing1 = socialmarketing
+
+socialmarketing1$chatter = chatter + uncategorized
+socialmarketing1["cook_fash_beaut"] = cooking +fashion + beauty
+socialmarketing1["out_health_fit"] = outdoors + health_nutrition + personal_fitness
+socialmarketing1["comp_trav_pol_new_auto"] = computers + travel + politics + news + automotive
+socialmarketing1["phot_chat_shop"] = photo_sharing + chatter + shopping 
+socialmarketing1["sport_online_college"] = sports_playing + online_gaming + college_uni
+socialmarketing1["tv_art"] = tv_film + art
+socialmarketing1["fam"] = family + school + food + sports_fandom + religion + parenting
+
+socialmarketing1 = subset(socialmarketing1, select= -c(cooking, fashion, beauty, outdoors, health_nutrition, personal_fitness, computers, travel, politics, photo_sharing, chatter, shopping, sports_playing, online_gaming, college_uni, tv_film, art, news, automotive, family, school, food, sports_fandom, religion, parenting, uncategorized))
+```
+
+Next, we will standardize the amount of tweets a certain user has in each category and then scale and center the data for each column.
+
+```{r}
+Z1 = socialmarketing1/rowSums(socialmarketing1)
+X1 = scale(Z1, center=TRUE, scale=TRUE)
+```
+
+Now that we have our data cleaned, we will initially run a clustering algorithm to group users who talk about the same things. We will then identify what they tweet about most often and label them as such. This labeling will be useful for understanding our market segmentation later. The first step in doing this, is choosing the correct number of clusters.
+
+```{r find k}
+#KKN and CH
+set.seed(10)
+N = nrow(X1)
+k_grid = c(1:30)
+ss = c()
+CH_grid = c()
+
+for(k in k_grid) {
+  cluster_k = kmeans(X1, k, nstart=50)
+  W = cluster_k$tot.withinss
+  ss = c(ss,W)
+  
+  B = cluster_k$betweenss
+  CH = (B/W) * ((N - k) / (k - 1))
+  CH_grid = c(CH_grid, CH)
+}
+
+plot(k_grid,ss)
+plot(k_grid,CH_grid)
+```
+
+The elbow plot does not give us a clear k to use; however, the CH index suggests a k of 10, so we will use that in our algorithm.
+
+```{r k-means k=10}
+set.seed(10)
+kclust = kmeans(X1, 10, nstart=50)
+
+for(i in 1:10)
+  print(sort(kclust$centers[i,] , decreasing = TRUE)[1:4])
+
+firstk = kclust$cluster
+```
+
+Above, the four variables with the highest value per cluster are displayed. From them we can discern a general trend of what these users tweet about most. The ten identified clusters are as follows:
+(1) Adult Content
+(2) TV and Art
+(3) Dating
+(4) Music
+(5) College Athletes -- these individuals seem to be college athletes, as they talk most about college, playing sports and video games
+(6) Beauty
+(7) General Fitness
+(8) Family
+(9) Photo
+(10) News
+
+Now that we have a label that each user falls under, we will attempt to define market segments and analyze which users fall into which market segment.
+
+```{r}
+summary(Z1)
+```
+
+As we can see in the summary statistics of the scaled values above, no user falls into just one category. Thus, as there are no clear seperatable "buckets" that a user will fall into, we believe that running a PCA analysis will help us in more generally grouping these subclusters together.  Additionally, reduced dimensionality will allow for a clustering algorithm to perform better, since distance based algorithms tend to suffer from high dimensionality (curse of dimensionality).
+
+```{r PCA 1}
+pc1 = prcomp(X1, scale=TRUE, center = TRUE, rank=10)
+loadings1 = pc1$rotation
+scores1 = pc1$x
+
+summary(pc1)
+plot(pc1)
+```
+
+We see a bigger jump of variance explained after PC5, so we will analyze the first five principal components.
+
+```{r}
+for (i in c(1:5))
+  print(sort(loadings1[,i]))
+```
+
+The above printed values are the 'ingredients' of the first five principal components. As we can see, PC3 and 4 both are primarily indicators of adult and spam categories. We will remove these variables from the dataset and re-run PCA to see if we get better variables, that differ from each other more.
+
+```{r PCA 2}
+socialmarketing2 = subset(socialmarketing1, select = -c(adult,spam))
+
+Z2 = socialmarketing2/rowSums(socialmarketing2)
+X2 = scale(Z2, center = TRUE, scale = TRUE)
+
+pc2 = prcomp(X2, scale=TRUE, center = TRUE, rank=10)
+loadings2 = pc2$rotation
+scores2 = pc2$x
+
+summary(pc2)
+plot(pc2)
+```
+
+This time the last bigger dropoff in variance explained occurs after PC4, so we will use the first four principal components.
+
+```{r}
+print('PC1')
+sort(loadings2[,1])
+print('PC2')
+sort(loadings2[,2])
+print('PC3')
+sort(loadings2[,3])
+print('PC4')
+sort(loadings2[,4])
+```
+
+Looking at the 'ingredient' set of the four principal components, this is how we classify what the components are distingushing between (the first group of people are the ones on the positive spectrum of the variable):
+PC1: Internet avid vs. Fitness enthusiast
+PC2: Family vs. Non-Family
+PC3: Opinion sharers vs. Hobbyests -- people who share their opinion on everything vs. people who talk about their hobby's
+PC4: Reverse Age (Young vs. Old)
+
+We will now run another clustering algorithm, using the above principal components. First we need to find how many clusters there seem to be.
+
+```{r find k with PCA}
+pc3 = prcomp(X2, scale=TRUE, center = TRUE, rank=4)
+scores3 = pc3$x
+
+colnames(scores3) = c("InternetAvid", "FamilyOriented", "OpinionSharers", "Young")
+
+#KKN and CH
+set.seed(10)
+N = nrow(scores3)
+k_grid = c(1:30)
+ss = c()
+CH_grid = c()
+
+for(k in k_grid) {
+  cluster_k = kmeans(scores3, k, nstart=50)
+  W = cluster_k$tot.withinss
+  ss = c(ss,W)
+  
+  B = cluster_k$betweenss
+  CH = (B/W) * ((N - k) / (k - 1))
+  CH_grid = c(CH_grid, CH)
+}
+
+plot(k_grid,ss)
+plot(k_grid,CH_grid)
+```
+
+Using our principal components, both approaches of finding k seem to give the same result. The elbow seems to be at k = 5, and CH is also telling us 5. Thus, we will run k-means with k = 5.
+
+
+```{r K-means(5) using PCA}
+set.seed(10)
+kclust = kmeans(scores3, 5, nstart=50)
+
+for(i in 1:5)
+  print(sort(kclust$centers[i,] , decreasing = TRUE))
+
+lastk = kclust$cluster
+```
+
+Analyzing the table above, the following are the five market segments we have identified:
+(1) Older, family-oriented individuals
+(2) Fitness enthusiasts
+(3) Individuals who live their life online
+(4) Tweeters -- individuals who share their opinion on everything
+(5) Pop-culturists -- individuals who talk about other people's lives / what's happening and new in pop culture
+
+
+```{r Plots}
+final = cbind(scores3, lastk, firstk)
+colnames(final) = c("InternetAvid", "FamilyOriented", "OpinionSharers", "Young", "MarketSegment", "TweetMostAbout")
+
+final = data.frame(final)
+
+mktCols = c('older_family_oriented', 'fitness', 'life_online', 'tweeters', 'pop_culture')
+groupCols = c('AdultContent', 'TvArt', 'Dating', 'Music', 'SportsOnlineCollege', 'Beauty', 'Fitness', 'Family', 'Photo', 'News')
+
+mkt_clusters = c()
+group_clusters = c()
+for (i in 1:length(final$MarketSegment))
+{
+  numMkt = as.numeric(final$MarketSegment[i])
+  mkt_clusters = c(mkt_clusters, mktCols[numMkt])
+  numGroup = as.numeric(final$TweetMostAbout[i])
+  group_clusters = c(group_clusters, groupCols[numGroup])
+}
+
+final$MarketSegment = mkt_clusters
+final$TweetMostAbout = group_clusters
+
+attach(final)
+
+ggplot(final) +
+  geom_point(aes(x = InternetAvid, y = OpinionSharers, col = MarketSegment))
+
+ggplot(final, mapping = aes(MarketSegment, fill = TweetMostAbout)) +
+  geom_histogram(stat = 'count', position = position_dodge(width = 0.8)) 
+```
+
+The first graph visualizes how our identified market segments differ on the first two principal components we identified (Internet Avid users and Opinion Sharers). Visualizing the market segments on other principal components demonstrates that each segment is distinguishable from the others.
+
+The second graph identifies what the individuals in each market segment tweet most about (which was identified in the first part of this problem). Looking at this data, our market segmentations make sense. For our fitness market, most users are tweeting most about fitness and beauty, and the largest presence of dating tweets is also found in this segment. Within our life_online segment, most individuals are sharing photos with their tweets. Next, in our older_family_oriented segment, most users are tweeting about family related things, which include sports_fandom, religion, etc. as concluded from a correlation matrix at the very beginning. Our pop_culture segment includes users who tweet about music, tv and art, and college, online gaming, and playing sports most. Lastly, our tweeters market segment tweets most about news, which is exactly who we hoped to capture in that segment.
+
+
+# Author attribution
+
+```{r}
+library(tm) 
+library(magrittr)
+library(slam)
+library(proxy)
+
+# Roll all train directories into one corpus
+author_dirs_train = Sys.glob('data/ReutersC50/C50train/*')
+file_list_train = NULL
+labels_train = NULL
+
+Y_train = NULL
+
+for(author in author_dirs_train) {
+	author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list_train = append(file_list_train, files_to_add)
+	labels_train = append(labels_train, rep(author_name, length(files_to_add)))
+	
+	parsedDocument = strsplit(author, "/")[[1]]
+  authorName = parsedDocument[length(parsedDocument)]
+  Y_train = append(Y_train, rep(authorName, length(files_to_add)))
+}
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+
+# Need a more clever regex to get better names here
+train_docs = lapply(file_list_train, readerPlain) 
+names(train_docs) = file_list_train
+names(train_docs) = sub('.txt', '', names(train_docs))
+
+# Preprocessing
+my_train_corpus = Corpus(VectorSource(train_docs))
+my_train_corpus = tm_map(my_train_corpus, content_transformer(tolower)) # make everything lowercase
+my_train_corpus = tm_map(my_train_corpus, content_transformer(removeNumbers)) # remove numbers
+my_train_corpus = tm_map(my_train_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_train_corpus = tm_map(my_train_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_train_corpus = tm_map(my_train_corpus, content_transformer(removeWords), stopwords("SMART"))
+
+DTM_train = DocumentTermMatrix(my_train_corpus)
+DTM_train # some basic summary statistics
+
+class(DTM_train)  # a special kind of sparse matrix format
+
+## You can inspect its entries...
+inspect(DTM_train[1:10,1:20])
+DTM_train = removeSparseTerms(DTM_train, 0.975)
+DTM_train
+
+# Now a dense matrix
+X_train = as.matrix(DTM_train)
+```
+
+We now have an X_train matrix and a Y_train vector.
+We will now follow the same procedure for the testing data.
+
+```{r}
+# Roll all train directories into one corpus
+author_dirs_test = Sys.glob('data/ReutersC50/C50test/*')
+file_list_test = NULL
+labels_test = NULL
+
+Y_test = NULL
+authors = NULL
+
+for(author in author_dirs_test) {
+	author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list_test = append(file_list_test, files_to_add)
+	labels_test = append(labels_test, rep(author_name, length(files_to_add)))
+	
+	parsedDocument = strsplit(author, "/")[[1]]
+  authorName = parsedDocument[length(parsedDocument)]
+  Y_test = append(Y_test, rep(authorName, length(files_to_add)))
+  authors = append(authors, authorName)
+}
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+
+# Need a more clever regex to get better names here
+test_docs = lapply(file_list_test, readerPlain) 
+names(test_docs) = file_list_test
+names(test_docs) = sub('.txt', '', names(test_docs))
+
+# Preprocessing
+my_test_corpus = Corpus(VectorSource(test_docs))
+my_test_corpus = tm_map(my_test_corpus, content_transformer(tolower)) # make everything lowercase
+my_test_corpus = tm_map(my_test_corpus, content_transformer(removeNumbers)) # remove numbers
+my_test_corpus = tm_map(my_test_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_test_corpus = tm_map(my_test_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_test_corpus = tm_map(my_test_corpus, content_transformer(removeWords), stopwords("SMART"))
+
+DTM_test = DocumentTermMatrix(my_test_corpus)
+DTM_test # some basic summary statistics
+
+class(DTM_test)  # a special kind of sparse matrix format
+
+## You can inspect its entries...
+inspect(DTM_test[1:10,1:20])
+DTM_test = removeSparseTerms(DTM_test, 0.975)
+DTM_test
+
+# Now a dense matrix
+X_test = as.matrix(DTM_test)
+```
+
+Now we have a properly formatted X and Y test set as well.
+
+We dediced to take out any words that were not in the test and train sets because it is likely that all authors will use new words in other articles, so it should not really have an impact on our analysis then.
+
+```{r}
+DTM_test2 = DocumentTermMatrix(my_test_corpus, control = list(dictionary=Terms(DTM_train)))
+X_test2 = as.matrix(DTM_test2)
+
+DTM_train2 = DocumentTermMatrix(my_train_corpus, control = list(dictionary=Terms(DTM_test2)))
+X_train2 = as.matrix(DTM_train2)
+```
+
+
+```{r using set-2}
+smooth_count = 1/nrow(X_train2)
+# Create a weight matrix
+author_data = X_train2[1:50,]
+w_Author = colSums(author_data + smooth_count)
+w_Author = w_Author/sum(w_Author)
+
+weights = matrix(w_Author, ncol = ncol(X_train2))
+
+for (i in 2:50)
+{
+  author_data = X_train2[((i*50) - 49):(i*50),]
+  w_Author = colSums(author_data + smooth_count)
+  w_Author = w_Author/sum(w_Author)
+
+  weights = rbind(weights, w_Author)
+}
+
+
+# Create a prediction function
+naiveBayesPrediction <- function(test_doc)
+{
+  probs = c()
+  for (i in 1:50)
+    probs = c(probs, sum(test_doc * log(weights[i,])))
+
+  return (authors[which.max(probs)])
+}
+
+# Check the amount of correct predictions
+yhat_test = NULL
+
+correct = 0
+for (i in 1:nrow(X_test2))
+{
+  test_doc = X_test2[i,]
+  yhat_test = naiveBayesPrediction(test_doc)
+  actual = Y_test[i]
+  if (yhat_test == actual)
+    correct = correct + 1
+}
+
+cat('Naive Bayes prediction accuracy:', correct/2500)
+```
+
+Predict using random forest
+```{r}
+library(randomForest)
+library(caret)
+set.seed(1)
+
+#create model using the training data
+model= randomForest(y= as.factor(Y_train), x=X_train2, mtry=4, ntree=400)
+#fit the model onto testing data 
+model.pred<- predict(model,data= X_test2)
+#simple line to calculate the accuracy
+accuracy=mean(model.pred == Y_test)
+#print out accuracy
+accuracy
+```
+
+
+# Association Rule Mining
+First step is to read in the data and process it correctly, so that it can be converted into transactions.
+```{r}
+library(reshape2)
+library(tidyverse)
+library(arules)  # has a big ecosystem of packages built around it
+library(arulesViz)
+groceries_raw = read.csv("data/groceries.txt", header=FALSE)
+
+groceries = groceries_raw
+
+groceries$basket = seq.int(nrow(groceries_raw))
+
+groceries2 = melt(groceries, id.vars='basket')
+groceries2 = groceries2[order(groceries2$basket),]
+groceries2 = subset(groceries2, value != "")
+groceries2$variable <- NULL
+#groceries2 = lapply(groceries2, unique)
+colnames(groceries2) = c("basket", "item")
+
+groceries2$basket = factor(groceries2$basket)
+
+groceries2 = split(x=groceries2$item, f=groceries2$basket)
+
+groceries2 = lapply(groceries2, unique)
+
+groctrans = as(groceries2, "transactions")
+
+summary(groctrans)
+```
+
+We have 15296 transaction in which a total of 169 different items are purchased.
+
+We will err on the side of using less restrictive rules initially, in order to not exclude any potentially interesting rules, just because they occur infrequently.
+Given that the average amount of items per basket is 2.835, if all items occurred equally often, each item's support count would be around 0.017 (calculated below). This is the average support for any one item in a basket. The average support for two items or more in any basket is significantly lower. While we want to focus on rules that have a significant enough support count, this initial calculation demonstrates that our support count should be fairly low and gives us a ballpark of what it should be. Using this calculation, we decided to use a support of 0.001. While this means that the items need only show up in at least 16 of the over 15,000 transactions, this is actually more limiting than one might expect, given that there were only 4 items max allowed per transaction. Additionally, we do not want to preliminarily knock out potentially strong rules of itemsets that occur rarely. If an item is rare, for example caviar, it will have a low support count; however, there could be a strong and important rule generated by it.
+Additionally, we will use a minimum confidence of 0.1. This means that for every transaction that has item A, at least one tenth of them must include item B, for there to be a rule established. While this value is chosen somewhat arbitrarily, we believe that it is a good confidence level, again given that only 4 items are allowed per transaction maximum. If there were more items allowed, we would likely increase the confidence threshold.
+```{r}
+2.835*15296/169/15296
+
+grocrules = apriori(groctrans, 
+	parameter=list(support=.001, confidence=.1))
+
+inspect(grocrules)
+```
+
+Using the above mentioned thresholds, this leaves us with 548 rules.
+
+```{r}
+plot(grocrules, measure = c("support", "lift"), shading = "confidence")
+```
+
+Of these 548 rules, we can see that many of them have a small lift. However, we want rules that have a high lift, as a higher lift indicates an increased likelihood of purchasing item X when Y was bought, rather than just the general likelihood of item X being bought. These are known as complimentary products. We will look at rules with a lift of 2 or greater.
+
+```{r}
+lift2rules = subset(grocrules, subset=lift > 2)
+summary(lift2rules)
+
+plot(lift2rules, measure = c("support", "lift"), shading = "confidence")
+plot(lift2rules, method='two-key plot')
+```
+
+Using a minimum lift of 2 gives us 261 rules.The first graph shows us that lift is still mostly small, and that higher lift rules have a small support, which makes intuitive sense, as the higher support there is, the lower the maximum lift possible. The second graph shows that confidence is typically higher for order 3 itemsets than order 2, but that the support for order 2 itemsets is higher. Again, this makes sense, since it is more likely for any two items to appear together than 3 items.
+
+From these rules, we will  export the top 200 with the highest lift and analyze them more in depth.
+
+```{r}
+saveAsGraph(head(grocrules, n = 200, by = "lift"), file = "grocrules.graphml")
+```
+
+```{r}
+knitr::include_graphics("Network.pdf")
+```
+Some sample insights:
+(1) Sausage and rolls/buns (together with a few order 2 itemsets) cerate a structural hole which connects drinks with the rest of the store. So you would like to have these items at the end of the tropical fruit section to make a natural flow into the drink section.
+(2) Another interesting insight from the drinks section is that fruit and vegetable juices connect the beverages community with bakery and chocolate products. So you would probably like to make a transition form beverages to the bakery/chocolate section using juices as a transition.
+(3) Whipped/sour cream provide a connection from the frozen section to the rest of the items.
+(4) Soft cheese and domestic eggs connect baking products to the rest of the items.
+
+A grocery store should be designed to where the structural holes that can be discerned from the above graph are the transition items between the sections they group together. Furthermore, the largest nodes are the most important items (as measuered by betweeness centrality), meaning that they connect the largest amounts of items together. Therefore, these items should ideally be in the centers of the communities of items they represent.
