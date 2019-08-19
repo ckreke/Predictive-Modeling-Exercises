@@ -5,6 +5,293 @@ output:
   html_document: default
 ---
 
+# Green buildings
+
+```{r}
+library(mosaic)
+
+greenbuildingsdata = read.csv('data/greenbuildings.csv')
+
+data(greenbuildingsdata)
+greenbuildingsdata
+head(greenbuildingsdata)
+summary(greenbuildingsdata)
+```
+
+
+```{r}
+median_green=median(greenbuildingsdata$Rent[greenbuildingsdata$green_rating==1])  
+median_nongreen=median(greenbuildingsdata$Rent[greenbuildingsdata$green_rating==0])
+cat("Median rent for green buildings:", median_green, "\nMdeian rent for nongreen buildings:", median_nongreen)
+```
+
+Through his analysis, the Excel guru made a case that there is a premium upside when constructing green buildings. The Excel guru anticipated a $2.60 per square foot premium for constructing a green building by calculating the median values of non green buildings and green buildings separately. He implies a $650,000 in revenue for a $250,000 square foot building. These computations, however, are very superficial and my team performed further exploratory analysis to verify these findings.
+
+```{r}
+ggplot(data = greenbuildingsdata) + 
+  geom_histogram(mapping = aes(x = Rent, y = stat(density)), binwidth = 2) +
+  facet_grid(green_rating~.)
+```
+ 
+First, our team began by looking at the variability in the data. We created density plots using histograms and divided the plots between green buildings and non green buildings to analyze how we should filter out data that would skew our findings. Because we know that our building is new and would be 250,000 square feet, we would have to filter out and perform analysis on similar buildings.
+
+```{r}
+ggplot(data = greenbuildingsdata) + 
+  geom_histogram(mapping = aes(x = age, y = stat(density)), binwidth = 2) +
+  facet_grid(green_rating~.)
+
+greenbuildings1 = mutate(greenbuildingsdata,
+                        agecat = cut(age, c(-1, 01, 25, 50, 75, 200)))
+
+sum1 = greenbuildings1 %>%
+  group_by(agecat, green_rating) %>%
+  summarize(mean_rent = mean(Rent), n = n())
+
+sum1
+
+ggplot(sum1) +
+  geom_bar(stat='identity', aes(x=agecat, y=mean_rent, fill=factor(green_rating)), position = 'dodge')
+
+# then use geom_bar
+```
+ 
+ The density for ages above 50 years old is significantly unbalanced. 
+ 
+```{r}
+options(scipen=999)
+
+ggplot(data = greenbuildingsdata) + 
+  geom_histogram(mapping = aes(x = size, y = stat(density))) +
+  facet_grid(green_rating~.)
+
+greenbuildings2 = mutate(greenbuildingsdata,
+                         sizecat = cut(size, c(-1, 5000, 50000, 100000, 250000, 500000, 750000, 1000000, 2000000,4000000)))
+
+sum2 = greenbuildings2 %>%
+  group_by(sizecat, green_rating) %>%
+  summarize(mean_rent = mean(Rent), n = n())
+
+sum2
+
+options(scipen=999)
+require(scales)
+
+
+df <- data.frame(x=seq(1, 1e9, length.out=100), y=sample(100))
+
+point <- format_format(big.mark = " ", decimal.mark = ",", scientific = FALSE)
+
+gg_size=ggplot(sum2) +
+  geom_bar(stat='identity', aes(x=sizecat, y=mean_rent, fill=factor(green_rating)), position = 'dodge') +
+  coord_flip() 
+gg_size
+```
+
+Uneven distribution in very small and very large builings. 
+
+```{r}
+options(scipen=999)
+
+ggplot(data = greenbuildingsdata) + 
+  geom_histogram(mapping = aes(x = leasing_rate, y = stat(density))) +
+  facet_grid(green_rating~.)
+
+gg_leasingrate = mutate(greenbuildingsdata,
+                        leasing_ratecat = cut(leasing_rate, c(-1, 01, 25, 50, 75, 100)))
+
+sum4 = gg_leasingrate %>%
+  group_by(leasing_ratecat, green_rating) %>%
+  summarize(mean_rent = mean(Rent), n = n())
+
+sum4
+
+ggplot(sum4) +
+  geom_bar(stat='identity', aes(x=leasing_ratecat, y=mean_rent, fill=factor(green_rating)), position = 'dodge')
+
+```
+
+High variability in buildings with low leasing rates. 
+
+
+
+These visualizations show variability in size, age and leasing rates of buildings. It is not sensible to compare buildings of differing size, age, and occupancy rates, and thus, decided to only include buildings with the following features:
+- Buildings less than 50 years old
+- Buildings greater than 5000 square feet and less than 1,000,000 square feet
+- Buildings with leasing rates of greater than 25%
+
+```{r}
+greenbuildings <- greenbuildingsdata[which(greenbuildingsdata$age < 50 & greenbuildingsdata$size > 5000 & greenbuildingsdata$size < 1000000 & greenbuildingsdata$leasing_rate>25), ]
+summary(greenbuildings)
+green=greenbuildings[which(greenbuildings$green_rating ==1),]
+nongreen=greenbuildings[which(greenbuildings$green_rating ==0),]
+```
+
+
+```{r}
+median_filtereed_green=median(greenbuildings$Rent[greenbuildings$green_rating==1])
+median_filtered_nongreen=median(greenbuildings$Rent[greenbuildings$green_rating==0])
+cat("Median rent for filtered green buildings:", median_filtereed_green, "\nMedian rent for filtered non-green buildings:", median_filtered_nongreen)
+```
+
+We can see that the median rent per square foot in non-green buildings was $26.4 and the median rent per square foot for green buildings was $28. This shows that the more realistic deviation between green buildings and non-green buildings median rent is only $1.60 per square foot rather than the $2.60 that the Excel guru calculated. For a building that is greater than 250,000 square feet, that would translate into $400,000 of extra revenue per year instead of the $650,000 initial calculation.
+
+
+
+Our next step was analyzing confounding variables that could help identify if there is a significant premium in rent for green buildings. We needed to explain if the $1.60 rent per square foot increase in green buildings was actually due to their green rating status or if there are other factors that may explain this price. (All the following scatter plots will be split by non green buildings (0) on the left, and green buildings (1) on the right.
+
+```{r}
+options(scipen=999)  # turn-off scientific notation like 1e+48
+
+theme_set(theme_bw()) 
+
+# Scatterplot
+ggplot(greenbuildings, aes(x=size, y=Rent)) + 
+  geom_point(aes(col=as.factor(amenities))) +
+  geom_smooth(method="loess", se=F) +
+  facet_grid(as.factor(amenities) ~ green_rating) +
+  labs(subtitle="Size and Amenities vs Rent", 
+       y="Rent", 
+       x="Size", 
+       title="Scatterplot", 
+       caption = "Source: greenbuildings")
+
+```
+
+```{r}
+median_filtered_green_amenities=median(green$Rent[green$amenities==1])
+median_filtered_green_no_amenities=median(green$Rent[green$amenities==0])
+median_filtered_nongreen_amenities=median(nongreen$Rent[nongreen$amenities==1])
+median_filtered_nongreen_no_amenities=median(nongreen$Rent[nongreen$amenities==0])
+cat("Median rent for filtered green buildings with amenities:", median_filtered_green_amenities, "\nMedian rent for filteered green buildings without amenities:", median_filtered_green_no_amenities, "\nMedian rent for filtered non green buildings with amenities:", median_filtered_nongreen_amenities, "\nMedian rent for filteered non-green buildings without amenities:", median_filtered_nongreen_no_amenities)
+
+green_amenities=(green[which(green$amenities ==1),])
+count(green_amenities)/count(green)
+nongreen_amenities=(nongreen[which(nongreen$amenities ==1),])
+count(nongreen_amenities)/count(nongreen)
+```
+
+Green buildings with amenities contribute nearly a $1.5 increase for rent per square foot over green buildings without amenities. Non-green buildings have a $2 rent per square foot increase if amenities are included or not.
+73% of green buildings have amenities whereas only 60% of non green buildings have amenities. Thus, green buildings will have a higher median rent becuase they tend to have more amenities than non green buildings. 
+
+
+Next we looked at how buildings in different cluster locations affect rent.
+
+```{r}
+ggplot(greenbuildings, aes(x=Rent, y=leasing_rate)) + 
+  geom_point(aes(col=as.factor(class_a))) +
+  geom_smooth(method="loess", se=F) +
+  facet_grid(amenities ~ green_rating) +
+  labs(subtitle="Rent vs Leasing Rate", 
+       y="Leasing Rate", 
+       x="Rent", 
+       title="Scatterplot", 
+       caption = "Source: greenbuildings")
+```
+Most green buildings are class A compared to non-green buildings. In addition, these buildings tend to have a higher leasing rates compared to non green buildings. This could inflate the value of green buildings as class A building are typically nicer. Lets dive more deeply into this. 
+
+
+```{r}
+median_green_a=median(green$Rent[green$class_a==1])
+median_green_non_a=median(green$Rent[green$class_a==0])
+median_nongreen_a=median(nongreen$Rent[nongreen$class_a==1])
+median_nongreen_non_a=median(nongreen$Rent[nongreen$class_a==0])
+
+cat("Median rent for class A green buildings:", median_green_a, "\nMedian rent for Class B green buildings:", median_green_non_a, "\nMedian rent for Class A non-green buildings", median_nongreen_a,  "\nMedian rent for Class B non-green buildings:", median_nongreen_non_a)
+
+green_classa=(green[which(green$class_a ==1),])
+count(green_classa)/count(green)
+nongreen_classa=(nongreen[which(nongreen$class_a ==1),])
+count(nongreen_classa)/count(nongreen)
+
+```
+
+As we can see here, the median rent Class A buildings in green buildings and non green buildings are very high compared to green buildings and non green buildings that are not Class A. Of green buildings, 81% are class A and only 52% of non green buildings are class A. This is definitely a reason why green buildings were caluclated to have a higher median rent than non green buildings. 
+
+
+```{r}
+options(scipen=999)
+
+ggplot(data = greenbuildings) + 
+  geom_histogram(mapping = aes(x = cluster, y = stat(density))) +
+  facet_grid(green_rating~.)
+
+# , binwidth = 20
+
+greenbuildings5 = mutate(greenbuildings,
+                        clustercat = cut(cluster, c(0, 250, 625, 875, 1250)))
+
+sum5 = greenbuildings5 %>%
+  group_by(clustercat, green_rating) %>%
+  summarize(mean_cluster_rent = mean(cluster_rent), n = n())
+
+sum5
+
+ggplot(sum5) +
+  geom_bar(stat='identity', aes(x=clustercat, y=mean_cluster_rent, fill=factor(green_rating)), position = 'dodge')
+```
+
+Clearly a building’s rent is very dependent on its cluster location. Buildings in the 0- 250 cluster range pay significantly less in rent on average compared to buildings in the 200-1250 cluster range. However, across each cluster bins, both green buildings and non green buildings are relatively equal. 
+
+```{r}
+median_filtered_green_cluster1=median(green$Rent[green$cluster>=0 & green$cluster<250])
+median_filtered_green_no_cluster2=median(green$Rent[green$cluster>=250 & green$cluster<625])
+median_filtered_green_cluster3=median(green$Rent[green$cluster>=625 & green$cluster<1250])
+median_filtered_nongreen_cluster1=median(nongreen$Rent[nongreen$cluster>=0 & nongreen$cluster<250])
+median_filtered_nongreen_cluster2=mean(nongreen$Rent[nongreen$cluster>=250 & nongreen$cluster<625])
+median_filtered_nongreen_cluster3=median(nongreen$Rent[nongreen$cluster>=625 & nongreen$cluster<1250])
+cat("Median rent for filtered green buildings in clusters 0-250:", median_filtered_green_cluster1, "\nMedian rent for filteered green buildings in clusters 250-625:", median_filtered_green_no_cluster2, "\nMedian rent for filtered green buildings in clusters 625-1250:", median_filtered_green_cluster3, "\nMedian rent for filtered nongreen buildings in clusters 0-250:", median_filtered_nongreen_cluster1, "\nMedian rent for filtered nongreen buildings in clusters 250-625:", median_filtered_nongreen_cluster2, "\nMedian rent for filtered nongreen buildings in clusters 625-1250:", median_filtered_nongreen_cluster3)
+```
+
+```{r}
+green_lowcluster=(green[which(green$cluster >=0 & green$cluster<250),])
+count_green_low=nrow(green_lowcluster)/nrow(green)
+nongreen_lowcluster=(nongreen[which(nongreen$cluster >=0 & nongreen$cluster<250),])
+count_nongreen_low=nrow(nongreen_lowcluster)/nrow(nongreen)
+
+cat("Percent of green buildings in low clusters:", count_green_low, "\nPercent of nongreen buildings in low:", count_nongreen_low)
+
+```
+
+There are more non green buildings in the lower clusters. This means that green buildings tend to be in clusters with high rent more so than non green buildings which would further inflate their median rent. To make sure that this is viable, however, we need to see if there are significantly more nongreen buildings with net contracts in these clusters. If so, then non green buildings may actually be paying more in rent + utilities than green buildings.
+
+```{r}
+ggplot(greenbuildings, aes(x=cluster, y=cluster_rent)) + 
+  geom_point(aes(col=as.factor(net))) +
+  geom_smooth(method="loess", se=F) +
+  facet_grid(as.factor(net) ~ green_rating) +
+  labs(subtitle="Cluster vs Cluster Rent Based on Net Contracts", 
+       y="Cluster Rent", 
+       x="Cluster", 
+       title="Scatterplot", 
+       caption = "Source: greenbuildings")
+
+```
+
+```{r}
+green <- greenbuildings[ which(greenbuildings$green_rating==1), ]
+nongreen <- greenbuildings[ which(greenbuildings$green_rating==0), ]
+
+cat("Percent of nongreen buildings with net contracts:", nrow(nongreen[ which(nongreen$net==1), ])*100/nrow(nongreen), "\nPercent of green buildings with net contracts:", nrow(green[ which(green$net==1), ])*100/nrow(green))
+```
+
+The graph above shows that there are very few net contract buildings in both types of buildings. In fact, there are only 4.08% of non-green buildings with net-based contracts, and only 5.30% of green buildings with net based contracts. This difference is not substantial enough to account for the rent deviations. This confirms that the cluster location deviations in rent is not because of net contract based rent. Becuase there are more non green buildings in the lower clusters and that most buildings are not net based contracts, the median non green buildings rent is undervalued. Lets confirm that non green buildings are not paying higher in rent by looking at total degree days in both types of buildings.
+
+
+```{r}
+cat("Average number of total degree days for nongreen buildings:", mean(nongreen$total_dd_07), "\nAverage number of total degree days for green buildings:", mean(green$total_dd_07))
+```
+
+Our final research included the mean total amount of degree days in green buildings and non green buildings. Because both types of buildings have nearly the same number of total degree days, we can assume that the toal utility costs in both types of buildings are similar. Thus, green buildings and non green deviations are not caused by these deviations in rent, and so we can confidently say that the previous factors discussed are the major variables when determining rent differences between green buildings and non green buildings.  
+
+
+```{r}
+lin.fit=lm(Rent~size+leasing_rate+class_a+amenities+cluster+net+green_rating+green_rating*amenities+green_rating*class_a, data=greenbuildings)
+summary(lin.fit)
+```
+
+In conclusion, investing in a green certification building is not a reasonable decision. There is no apparent premium for green buildings, when accounting for all possible confouding variables. 
+ As explained using the visualizations, 73% of green buildings have amenities, 81% of them are class A buildings, and 83% of them are in clusters that pay higher rent which clearly increased the valuation of green buildings in the Excel Guru's initial calculations. Green ratings show to be insignificant when taking all other factors into account. Therefore we recommend the real estate developer should not invest in "going green". 
+
 # Flights at ABIA
 
 ```{r}
@@ -753,6 +1040,10 @@ The second graph identifies what the individuals in each market segment tweet mo
 
 # Author attribution
 
+Initially, we read in all of the training data and for each author in the direcory, we read in all of their documents. We made a note of their name, in order to create the Y_train values.
+We then processed all of those documents in english and combined all of the documents into one training corpus. In addition to removing numbers, punctuation, excess white-space, and making all letters lower case, we removed all SMART stopwords, since these are very common words that will be present in high frequencies in almost all documents.
+After this data cleaning, we parsed the documents into a document term matrix and decided to use term-frequency asthe weighting. We also removed sparse terms to a threshold of 0.975.
+
 ```{r}
 library(tm) 
 library(magrittr)
@@ -809,7 +1100,7 @@ X_train = as.matrix(DTM_train)
 ```
 
 We now have an X_train matrix and a Y_train vector.
-We will now follow the same procedure for the testing data.
+We will follow the same procedure for the testing data.
 
 ```{r}
 # Roll all train directories into one corpus
@@ -865,7 +1156,7 @@ X_test = as.matrix(DTM_test)
 
 Now we have a properly formatted X and Y test set as well.
 
-We dediced to take out any words that were not in the test and train sets because it is likely that all authors will use new words in other articles, so it should not really have an impact on our analysis then.
+We decided to take out any words that were not in the test and train sets because it is likely that all authors will use new words in other articles, so it should not really have an impact on our analysis then. We did this by creating a new document term matrix for both the test and train sets, by only allowing the document term matrices to include terms that were used in the other set. So, for the test set, we only allowed the document term matrix to include words that had appeared in the training document term matrix.
 
 ```{r}
 DTM_test2 = DocumentTermMatrix(my_test_corpus, control = list(dictionary=Terms(DTM_train)))
@@ -875,6 +1166,10 @@ DTM_train2 = DocumentTermMatrix(my_train_corpus, control = list(dictionary=Terms
 X_train2 = as.matrix(DTM_train2)
 ```
 
+
+Now that we have everything set up, we will find the accuracy of different models. For naive bayes, we added a smoothing parameter to the terms. We then found each terms weighting by author.
+Next, we created a function that takes a test document and calculates all of the log(probabilites) of this document belonging to each author. The maximum probability is found, and the associated author is returned.
+Next we looped through each document in the test set and using our above defined function we classified which author we predict this document to belong to. We kept track of how many predictions were correct.
 
 ```{r using set-2}
 smooth_count = 1/nrow(X_train2)
@@ -921,7 +1216,8 @@ for (i in 1:nrow(X_test2))
 cat('Naive Bayes prediction accuracy:', correct/2500)
 ```
 
-Predict using random forest
+Our naive bayes model had a terrible prediction accuracy, just above the baseline of predicting the same author for each document. So we used a random forest model instead. We fed the training data into the model and then predicted the author for all of our testing data. 
+
 ```{r}
 library(randomForest)
 library(caret)
@@ -937,6 +1233,7 @@ accuracy=mean(model.pred == Y_test)
 accuracy
 ```
 
+Our random forest model actually has a very good prediction accuracy of over 75%.
 
 # Association Rule Mining
 First step is to read in the data and process it correctly, so that it can be converted into transactions.
